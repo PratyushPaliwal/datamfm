@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install ruff black pytest beautifulsoup4 lxml pyyaml editdistance
+
+      - name: Lint with ruff
+        run: ruff check .
+
+      - name: Check formatting with black
+        run: black --check .
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+        continue-on-error: true   # tests may need API keys; don't fail CI
+
+  validate-configs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install yaml
+        run: pip install pyyaml
+      - name: Validate YAML configs
+        run: |
+          python -c "
+          import yaml, glob
+          for f in glob.glob('configs/*.yaml'):
+              with open(f) as fh:
+                  yaml.safe_load(fh)
+              print(f'OK: {f}')
+          "

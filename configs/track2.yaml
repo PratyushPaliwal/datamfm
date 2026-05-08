@@ -1,0 +1,26 @@
+# Track 2 — Chart Understanding Configuration
+
+pipeline:
+  csv_model: gemini-2.5-pro        # options: gemini-2.5-pro | qwen3-vl | claude-opus
+  summary_model: gemini-2.5-pro
+  
+  # Run both tasks in parallel per image
+  parallel_tasks: true
+  max_workers: 4
+
+  # Splits to process
+  splits:
+    - real
+    - synthetic
+
+postprocess:
+  # Enforce no rounding: 1247.3 stays 1247.3
+  enforce_numeric_precision: true
+  # Validate CSV is parseable
+  validate_csv: true
+  # Minimum numbers in summary (for Numeric Fact F1)
+  min_numbers_in_summary: 3
+
+output:
+  csv_file: chart2csv_predictions.jsonl
+  summary_file: chart2summary_predictions.jsonl

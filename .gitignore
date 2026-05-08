@@ -1,0 +1,49 @@
+# Secrets — never commit
+configs/secrets.env
+*.env
+*.key
+
+# Data — too large for git (use Google Drive / DVC)
+data/
+submission/*.zip
+submission/track1/
+submission/track2/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Model weights (large files — store separately)
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+
+# Logs & outputs
+logs/
+*.log
+wandb/
+mlruns/

@@ -1,0 +1,38 @@
+# Track 1 — Document Parsing Configuration
+
+pipeline:
+  # Primary VLM for full-page fallback
+  primary_model: paddleocr-vl       # options: paddleocr-vl | claude | gemini
+  
+  # Use specialised models per element type (recommended)
+  use_specialist_routing: true
+  
+  specialists:
+    text: paddleocr-vl              # Best text edit distance
+    tables: rapidtable              # Best TEDS
+    formulas: unimerNet             # Best CDM
+    fallback: claude-opus           # For ambiguous elements
+
+  # Layout detection
+  layout_detector: doclayout-yolo
+  layout_confidence_threshold: 0.5
+
+  # Concurrency
+  max_workers: 4
+  batch_size: 1
+
+postprocess:
+  # Normalise unicode, strip BOM, fix list markers
+  normalise_text: true
+  # Validate every <table> block is parseable HTML
+  lint_html_tables: true
+  # Compile-check every $$...$$ block
+  validate_latex: true
+  # Sort elements by bounding box (top→bottom, left→right)
+  sort_by_bbox: true
+
+output:
+  format: markdown                  # .md files
+  formula_display: "$$"            # display formula delimiter
+  formula_inline: "$"              # inline formula delimiter
+  table_format: html               # html | markdown
