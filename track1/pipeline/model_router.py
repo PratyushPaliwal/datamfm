@@ -1,77 +1,83 @@
 """
 Model router for Track 1.
-Decides which model handles each element type on a page.
-Extend this file to plug in new models.
+
+Currently supported:
+    - docling
+
+This keeps the Track 1 document parsing pipeline local.
+No Claude, no Gemini, no API keys.
 """
 
-import base64
-import os
+import subprocess
+import tempfile
 from pathlib import Path
-
-import anthropic
-
-
-def encode_image(image_path: Path) -> tuple[str, str]:
-    suffix = image_path.suffix.lower()
-    media_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                 ".png": "image/png", ".webp": "image/webp"}
-    media_type = media_map.get(suffix, "image/jpeg")
-    with open(image_path, "rb") as f:
-        data = base64.standard_b64encode(f.read()).decode("utf-8")
-    return data, media_type
 
 
 def route_page(image_path: Path, config: dict) -> str:
     """
-    Route a full page image through the configured pipeline.
-    Returns raw markdown string.
-    
-    Currently: single-model full-page approach.
-    TODO: integrate DocLayout-YOLO to crop elements and route each separately.
+    Route one page image through the configured parser.
+
+    Args:
+        image_path: path to one page image
+        config: loaded YAML config
+
+    Returns:
+        raw Markdown string
     """
-    primary = config["pipeline"].get("primary_model", "claude")
+    primary = config.get("pipeline", {}).get("primary_model", "docling").lower()
 
-    if primary in ("claude", "claude-opus"):
-        return _run_claude(image_path, config)
-    elif primary in ("gemini", "gemini-2.5-pro"):
-        return _run_gemini(image_path, config)
-    else:
-        return _run_claude(image_path, config)
+    if primary in ("docling", "docling-cli"):
+        return _run_docling(image_path, config)
 
-
-def _run_claude(image_path: Path, config: dict) -> str:
-    from track1.prompts.templates import FULL_PAGE_PROMPT
-
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    img_data, media_type = encode_image(image_path)
-
-    message = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=4096,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {
-                    "type": "base64",
-                    "media_type": media_type,
-                    "data": img_data,
-                }},
-                {"type": "text", "text": FULL_PAGE_PROMPT},
-            ],
-        }],
+    raise ValueError(
+        f"Unknown primary_model: {primary}. "
+        "This router currently supports only 'docling'."
     )
-    return message.content[0].text
 
 
-def _run_gemini(image_path: Path, config: dict) -> str:
-    """Gemini 2.5 Pro via Google Generative AI SDK."""
-    import google.generativeai as genai
-    from track1.prompts.templates import FULL_PAGE_PROMPT
+def _run_docling(image_path: Path, config: dict) -> str:
+    """
+    Run Docling CLI on a single image and return Markdown.
 
-    genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-    model = genai.GenerativeModel("gemini-2.5-pro")
+    Requires:
+        pip install docling
 
-    import PIL.Image
-    img = PIL.Image.open(image_path)
-    response = model.generate_content([FULL_PAGE_PROMPT, img])
-    return response.text
+    Equivalent command:
+        docling image.png --to md --output temp_dir
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+
+        cmd = [
+            "docling",
+            str(image_path),
+            "--to",
+            "md",
+            "--image-export-mode",
+            "placeholder",
+            "--output",
+            str(tmpdir_path),
+        ]
+
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Docling failed.\n"
+                f"STDOUT:\n{result.stdout}\n\n"
+                f"STDERR:\n{result.stderr}"
+            )
+
+        md_files = list(tmpdir_path.rglob("*.md"))
+
+        if not md_files:
+            raise RuntimeError(
+                f"Docling did not generate a Markdown file for {image_path}"
+            )
+
+        return md_files[0].read_text(encoding="utf-8").strip()
