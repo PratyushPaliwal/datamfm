@@ -1,0 +1,54 @@
+## 附录 I
+
+## 初等数学几个内容简介
+
+为极轴. 这样建立的坐标系称为极坐标系.
+
+当点 $M$ 在极点时，极径 $\rho = 0$ ，极角 $\theta$ 可取任意值.在极坐标系中，除了极点 $O$ 以外，平面上任一点$M$与有序实数对 $( \rho , \theta )$ 之间建立了一一对应关系.但在实际应用中，
+
+有时为了方便起见，在极坐标中，允许 $\rho$ 和 $\theta$ 可取一切实数.这时，设有两个任意实数$ \rho$和 $\theta$ ，先作射线$O P$ ,使 $\angle A O P = \theta$ ，如果 $\rho > 0$ ，在$OP
+$上作一点 $M$ ，使$\vert O M \vert = \rho$ ；如果 $\rho < 0$ ,在 $P$ 向 $O$ 的延长线上，作一点$M$ ，使 $\left| O M \right| = \left| \rho \right|$ （图3）.这样，对于任意一对实数 $\rho$ 和 $\theta$ ，总可以在平面上确定唯一的一点 $M , \left( \rho , \theta \right)$ 仍称为点 $M$的极坐标，由此可知，有序实数对 $( \rho , \theta )$ 与
+
+$\left( \rho , \theta + 2 k \pi \right)$ 或 $\left( - \rho , \theta + \left( 2 k + 1 \right) \pi \right)$ 表示同一个点，这里 $k$ 取任意整数.
+
+图 3
+
+与直角坐标系一样，在极坐标系中，把曲线看作适合某种条件的点的集合，用曲线上的点的极坐标 $\rho , \theta$ 的关系式 $\varphi ( \rho , \theta ) = 0$ 表示的方程，就是曲线的极坐标方程.
+
+当极坐标系中的极点与直角坐标系中的原点重合，极轴与 $\boldsymbol { \mathscr { x } }$ 轴正半轴重合，两种
+
+坐标系的长度单位一致时（图4），极坐标与直角坐标可以互换。
+
+图 4
+
+由直角坐标到极坐标的变换公式为
+
+$$
+$$x = \rho \cos \theta ,\;y = \rho \sin \theta .$$
+$$
+
+由极坐标到直角坐标的变换公式为
+
+$$
+$${\rho }^{2} = {x}^{2} + {y}^{2},\;\tan \theta  = \frac{y}{x}\;\left( {x \neq  0}\right) .$$
+$$
+
+下面给出常用曲线的极坐标方程：
+
+1. 圆心在极点，半径为 $r$ 的圆的方程为 $\rho { = } r$.
+
+2. 圆心为 $( \boldsymbol { a } , 0 )$ ，半径为 $a$ 的圆的方程为 $\rho = 2 a \cos \theta .$
+
+3. 圆心为 $\left( a , { \frac { \pi } { 2 } } \right)$ ，半径为 ${ a }$ 的圆的方程为 $\rho = 2 a \sin \theta .$
+
+4. 过极点，倾角为 $\alpha$ 的直线方程为 $\theta = \alpha$ $({ \boldsymbol { \rho } } \in \mathbf { R } )$.
+
+5. 过点（a,0）且垂直于极轴的直线方程为$\mathbf{} \rho \cos \theta=a .$
+
+6. 过点 $\left( a , { \frac { \pi } { 2 } } \right)$ 且平行于极轴的直线方程为 $\rho \sin \theta = a .$
+
+# # （四）参数方程
+
+在平面直角坐标系中，如果曲线上任意一点的坐标x，y都是某个变量t的函数
+
+358

@@ -1,0 +1,43 @@
+62
+
+## RYOTA MIKAMI
+
+$ \left( {\epsilon = *,!}\right) $ , where $ {S}_{{L}^{\prime }} \in \Lambda $ is the polyhedron such that$ \operatorname{rel.int}{S}_{{L}^{\prime }} \supset \operatorname{rel.int} {S}_{{L}^{\prime },r\left( {L}^{\prime }\right) }^{\prime } $, the morphism  $  {j}_{{S}_{{L}^{\prime }}} :\operatorname{rel.int} {S}_{{L}^{\prime }} \rightarrow X $ is the inclusion,
+
+$$
+$${a}^{\prime }( {{S}_{{L}^{\prime },r( {L}^{\prime }) }^{\prime } = 0,{S}_{{L}^{\prime }} = {a}_{{S}_{{L}^{\prime },r( {L}^{\prime }) }^{\prime }}^{\prime }})  \in  {\mathbb{Z}}^{\Lambda  \cup  {\Lambda }^{\prime }}$$
+$$
+
+is the element whose $ {S}_{{L}^{\prime },r\left( {L}^{\prime }\right) }^{\prime } $-component is 0, ${S}_{{L}^{\prime }} $-component is $ {a}_{{S}_{{L}^{\prime },r( {L}^{\prime }) }^{\prime }}^{\prime } $ , and the other components are same as $ {a}^{\prime } $, and
+
+$$
+$${a}^{\prime }\left( {{S}_{{L}^{\prime },r\left( {L}^{\prime }\right) }^{\prime } = {a}_{{S}_{{L}^{\prime },r\left( {L}^{\prime }\right) }^{\prime }}^{\prime } + {\operatorname{codim}}_{{S}_{{L}^{\prime }}}{S}_{{L}^{\prime },r\left( {L}^{\prime }\right) }^{\prime }}\right)  \in  {\mathbb{Z}}^{\Lambda  \cup  {\Lambda }^{\prime }}$$
+$$
+
+is the element whose $ {S}_{{L}^{\prime },r\left( {L}^{\prime }\right) }^{\prime } $ -component is $ {a}_{{S}_{{L}^{\prime },r\left( {L}^{\prime }\right) }^{\prime }}^{\prime } + {\operatorname{codim}}_{{S}_{{L}^{\prime }}}{S}_{{L}^{\prime },r\left( {L}^{\prime }\right) }^{\prime } $ , and the other components are same as $ {a}^{\prime } $ .
+
+Proof. In the same way as Lemma 5.8, there is a decomposition
+
+$$
+$$\mathrm{Fil}_{\ast}^{\Lambda_{\supsetneq S_{L^{\prime}}}}\mathscr{F}_{X_{\mathrm{sm}}}^{p,w}|_{X_{\mathrm{sm}}\cap\bigcap_{i=1}^{r(L^{\prime})}W_{S_{L^{\prime},i}}^{\prime}}\cong\bigoplus_{b\in\mathbb{Z}^{\left\{S_{L^{\prime},i}^{\prime}\right\}_{i=1}^{r(L^{\prime})}\cup\left\{S_{L^{\prime}}\right\}}}\mathrm{Fil}_{\ast}^{\Lambda_{\supsetneq S_{L^{\prime}}}}\mathrm{gr}_{b}\mathscr{F}_{X_{\mathrm{sm}}}^{p,w}|_{X_{\mathrm{sm}}\cap\bigcap_{i=1}^{r(L^{\prime})}W_{S_{L^{\prime},i}^{\prime}}^{\prime}},$$
+$$
+
+where direct summands of the right-hand side are defined similarly to above Lemma 5.8. Then we have a decomposition of $IC_{\text {Trop,sheaf,}X}^{d-p,*}|_{{\bigcap_{i=1}^{r(L^{\prime })}{W_{S^{\prime }_{L^{\prime},i}}^{\prime}}}}$similar to Corollary 5.24. Then cohomology groups in the assertion are direct sums of cohomology groups of direct summands, and the assertion immediately follows from direct computation. (Note that we can take $W_{S_{L^{\prime }r(L^{\prime })}^{\prime }}^{\prime }\subset W_{S_{L^{\prime }}}$ , since $a^{\prime }$is adapted to $L^{\prime }$, we have $a_{S_{L^{\prime }}}^{\prime }\geq 0$ , and we have $\sigma_{S_{L^{\prime }}}=\sigma_{S_{L^{\prime },r(L^{\prime })}^{\prime }}$.)     $\square$
+
+Remark 6.14. By construction, $ {\mathrm{{Fil}}}_{ * }^{\Lambda \cup {\Lambda }^{\prime }}I{C}_{\text{Trop,sheaf }}^{d - p, * } $ satisfies analogs of Axiom $ {A}_{p}$(1) and (2) at each $ {S}_{k} \in {\Lambda }_{\text{sing }} $ for an adapted pair $ {L}^{\prime } = ( {{S}_{{L}^{\prime },1}^{\prime } \subsetneq \cdots \subsetneq {S}_{{L}^{\prime },r( {L}^{\prime }) - 1}^{\prime } \subsetneq {S}_{k}})~ ( {{S}_{{L}^{\prime },i}^{\prime } \in {\Lambda }^{\prime }}) $ and $ {a}^{ \circ } \in {\mathbb{Z}}^{\Lambda \cup {\Lambda }^{\prime }} $ . By decompositions in proof of Lemma 6.13 and Lemma 5.21, it also satisfies an analog of Axiom $ {A}_{p}  {\left( 2\right) }^{\prime } $ .
+
+Proposition 6.15. We have a natural LG-quasi-isomorphism
+
+$$
+$$\text{For}_{\Lambda\setminus\Lambda^{\prime}}\mathrm{Fil}_{\ast}^{\Lambda\cup\Lambda^{\prime}}IC_{\text{Trop,sheaf}}^{d-p,*}\cong\mathrm{Fil}_{\ast}^{\Lambda^{\prime}}IC_{\text{Trop,sheaf,}X^{\prime}}^{d-p,*}$$
+$$
+
+in $D_{c,[-\operatorname{gr}(X^{\prime}),0],LG}^{b}(X,\operatorname{grMod}\mathbb{Q}[T_{S^{\prime}}]_{S^{\prime}\in\Lambda^{\prime}})$.
+
+Proof. We have a natural LG-isomorphism
+
+$$
+$$\text{For}_{\Lambda\setminus\Lambda^{\prime}}\mathrm{Fil}_{\ast}^{\Lambda\cup\Lambda^{\prime}}\mathscr{F}_{X_{\mathrm{sm}}}^{d-p,w}|_{X_{\mathrm{sm}}^{\prime}}\cong\mathrm{Fil}_{\ast}^{\Lambda^{\prime}}\mathscr{F}_{X_{\mathrm{sm}}^{\prime}}^{d-p,w^{\prime}}$$
+$$
+
+on $ {X}_{\mathrm{{sm}}}^{\prime } $ . By Proposition 5.17, it suffices to show that $\mathrm{For}_{\Lambda\setminus\Lambda^{\prime}}\mathrm{Fil}_{\ast}^{\Lambda\cup\Lambda^{\prime}}IC_{\text{Trop,sheaf}}^{d-p,*}$ satisfies Axiom $ {A}_{p} $ (1) and$ {(2)}^{\prime } $ at each $ {S}^{\prime } \in {\Lambda }_{\text{sing }}^{\prime } $ . This follows from Remark 5.20, Lemma 6.13, and Remark 6.14 directly. (Note that for $ S \in \Lambda $ and $ {S}^{\prime } \in {\Lambda }^{\prime } $ with$\operatorname{rel.int}{S}^{\prime } \subset \operatorname{rel.int}{S}$, we have$ {m}_{p,S} + {\operatorname{codim}}_{S}~{S}^{\prime } =  {m}_{p,{S}^{\prime }}$.) $\square$
