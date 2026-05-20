@@ -47,7 +47,7 @@ def _run_docling(image_path: Path, config: dict) -> str:
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
-
+        
         cmd = [
             "docling",
             str(image_path),
