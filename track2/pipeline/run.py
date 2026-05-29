@@ -16,8 +16,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from dotenv import load_dotenv
-
-from track2.pipeline.model_runner import extract_csv, generate_summary
+from track2.pipeline.model_runner import extract_csv, generate_summary_from_csv
 from track2.postprocess.cleaner import clean_csv, clean_summary
 
 
@@ -30,24 +29,27 @@ def process_chart(image_path: Path, config: dict) -> dict:
     """Process one chart image -> (csv_result, summary_result)."""
     try:
         raw_csv = extract_csv(image_path, config)
-        raw_summary = generate_summary(image_path, config)
         csv_out = clean_csv(raw_csv, config)
+
+        # Generate summary from cleaned CSV, not directly from the image.
+        raw_summary = generate_summary_from_csv(csv_out, config)
         summary_out = clean_summary(raw_summary, config)
+
         return {
             "imagename": image_path.name,
             "predicted_csv": csv_out,
             "predicted_summary": summary_out,
             "status": "ok",
         }
+
     except Exception as e:
         return {
             "imagename": image_path.name,
             "predicted_csv": "",
-            "predicted_summary": f"ERROR: {e}",
+            "predicted_summary": "",
             "status": "error",
             "error": str(e),
         }
-
 
 def find_images_dir(base: Path, split: str) -> Path | None:
     """

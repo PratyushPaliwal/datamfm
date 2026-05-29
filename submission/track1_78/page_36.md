@@ -1,9 +1,0 @@
-## EXPLAININGJAPANESEFOREIGN ECONOMICPOLICY
-
-In this chapter,I will first lay out several approaches for explaining Japaneseforeign economicpolicy.Iwill beginwith international systemslevelanalysesinorder todemonstratetheimportanceofforeignpressure inexplainingJapanese foreign economic policy.Then,Iwill move on to state-level approaches. In general,Japan's policymaking is well explained by approaches of this level.However,by indicating the increasing importance ofministries other than MITl,Iwill indicate a gap in existing state-level approaches.In addition,I will outline asociety-level approach that focuses on interest groups.The strength of this approach is its consideration of social input.However,the main purpose of this section is toindicate its weakness,even in explaining American foreign policy (which is usually portrayed as the result ofbargaining among various interest groups).The second half of this chapter will be an attempt to construct a new theoretical framework that helps to explain the foreign economic policymaking of various Japanese ministries. The approach takenin this frameworkaimsatunderscoringvariationsof the'capacity of ministries'which determines the extent to which a ministry can pursue market liberalization on a given issue.
-
-## CONTENDINGAPPROACHESTOJAPANESEFOREIGN ECONOMICPOLICY
-
-## Hegemony,international regimes,market dependence,and gaiatsu
-
-International systems-level approaches arerelevant in explainingJapan's foreign economic policy,because they help us understand why Japan responds to gaiatsu,or foreign pressure.Despite the common inter- nationalrecognition that Japan keeps itsmarkets closed to foreign entrants,Japan has lifted the majority of its formal trade barriers,such as tariffs.quantitative restrictions,restrictions on foreign direct investment,

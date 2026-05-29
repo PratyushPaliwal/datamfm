@@ -91,14 +91,6 @@ def find_document_folders(input_dir: Path) -> list[Path]:
 
     Official challenge case:
         input_dir contains folders, each folder is one document.
-
-    Example:
-        data/doc_pages/
-        ├── uuid_1/
-        │   ├── page_001.png
-        │   └── page_002.png
-        ├── uuid_2/
-        │   └── page_001.png
     """
     child_dirs = [
         p for p in input_dir.iterdir()
@@ -121,12 +113,6 @@ def find_document_folders(input_dir: Path) -> list[Path]:
 def find_flat_images(input_dir: Path) -> list[Path]:
     """
     Find images directly/recursively under input_dir.
-
-    This is useful for testing when the dataset is just:
-        images/
-        ├── page_001.png
-        ├── page_002.png
-        └── ...
     """
     images = [
         p for p in input_dir.rglob("*")
@@ -158,6 +144,8 @@ def process_document_folder(
 
     It parses every page image, cleans the Markdown, combines all pages
     and writes one flat document-level .md file.
+
+    If one page fails, the document is still saved with the remaining pages.
     """
     document_id = document_folder.name
     out_path = output_dir / f"{document_id}.md"
@@ -167,6 +155,8 @@ def process_document_folder(
             "status": "skipped",
             "document": document_id,
             "file": str(out_path),
+            "pages": 0,
+            "failed_pages": 0,
         }
 
     images = get_images_for_document(document_folder)
@@ -177,38 +167,73 @@ def process_document_folder(
             "document": document_id,
             "file": str(out_path),
             "error": "No page images found.",
+            "pages": 0,
+            "failed_pages": 0,
         }
 
-    try:
-        page_markdowns = []
+    page_markdowns = []
+    failed_pages = []
 
-        for page_index, image_path in enumerate(images, start=1):
+    for page_index, image_path in enumerate(images, start=1):
+        print(
+            f"  Processing {document_id}: "
+            f"page {page_index}/{len(images)} ({image_path.name})",
+            flush=True,
+        )
+
+        try:
             raw_md = route_page(image_path, config)
             clean_md = clean_markdown(raw_md, config)
 
             if clean_md.strip():
                 page_markdowns.append(clean_md.strip())
 
-        final_md = "\n\n".join(page_markdowns).strip() + "\n"
-        out_path.write_text(final_md, encoding="utf-8")
+        except Exception as page_error:
+            failed_pages.append(
+                {
+                    "page_index": page_index,
+                    "image": image_path.name,
+                    "error": str(page_error),
+                }
+            )
 
-        return {
-            "status": "ok",
-            "document": document_id,
-            "file": str(out_path),
-            "pages": len(images),
-        }
+            print(
+                f"  Warning: failed {document_id}: "
+                f"page {page_index}/{len(images)} ({image_path.name}): "
+                f"{page_error}",
+                flush=True,
+            )
 
-    except Exception as e:
-        error_md = f"<!-- ERROR processing document {document_id}: {e} -->\n"
+            # Keep the final Markdown valid. Avoid writing a huge traceback.
+            page_markdowns.append(
+                f"<!-- page {page_index} could not be parsed -->"
+            )
+
+    if not page_markdowns:
+        error_md = (
+            f"<!-- No pages could be parsed for document {document_id}. -->\n"
+        )
         out_path.write_text(error_md, encoding="utf-8")
 
         return {
             "status": "error",
             "document": document_id,
             "file": str(out_path),
-            "error": str(e),
+            "error": "All pages failed.",
+            "pages": len(images),
+            "failed_pages": len(failed_pages),
         }
+
+    final_md = "\n\n".join(page_markdowns).strip() + "\n"
+    out_path.write_text(final_md, encoding="utf-8")
+
+    return {
+        "status": "ok",
+        "document": document_id,
+        "file": str(out_path),
+        "pages": len(images),
+        "failed_pages": len(failed_pages),
+    }
 
 
 def process_single_image_as_document(
@@ -230,7 +255,14 @@ def process_single_image_as_document(
             "status": "skipped",
             "document": document_id,
             "file": str(out_path),
+            "pages": 0,
+            "failed_pages": 0,
         }
+
+    print(
+        f"  Processing standalone image {document_id} ({image_path.name})",
+        flush=True,
+    )
 
     try:
         raw_md = route_page(image_path, config)
@@ -244,10 +276,11 @@ def process_single_image_as_document(
             "document": document_id,
             "file": str(out_path),
             "pages": 1,
+            "failed_pages": 0,
         }
 
     except Exception as e:
-        error_md = f"<!-- ERROR processing document {document_id}: {e} -->\n"
+        error_md = f"<!-- page could not be parsed for document {document_id} -->\n"
         out_path.write_text(error_md, encoding="utf-8")
 
         return {
@@ -255,6 +288,8 @@ def process_single_image_as_document(
             "document": document_id,
             "file": str(out_path),
             "error": str(e),
+            "pages": 1,
+            "failed_pages": 1,
         }
 
 
@@ -268,6 +303,9 @@ def print_result_summary(results: dict, output_dir: Path):
         f"Skipped: {results['skipped']} | "
         f"Errors: {results['error']}"
     )
+
+    print(f"Pages processed/reported: {results.get('pages', 0)}")
+    print(f"Page-level failures: {results.get('failed_pages', 0)}")
     print(f"Output: {output_dir}")
 
 
@@ -280,11 +318,10 @@ def main():
     parser.add_argument("--config", type=str, default="configs/track1.yaml")
     parser.add_argument("--workers", type=int, default=None)
 
-    # New: process only first N documents/images for quick tests.
+    # Process only first N documents/images for quick tests.
     parser.add_argument("--limit", type=int, default=None)
 
-    # New: treat each image as a separate document.
-    # Use this for flat folders like data/document_parsing_download/images.
+    # Treat each image as a separate document.
     parser.add_argument(
         "--flat_images_as_docs",
         action="store_true",
@@ -302,6 +339,8 @@ def main():
         "ok": 0,
         "skipped": 0,
         "error": 0,
+        "pages": 0,
+        "failed_pages": 0,
     }
 
     if args.flat_images_as_docs:
@@ -334,6 +373,8 @@ def main():
             ):
                 result = future.result()
                 results[result["status"]] += 1
+                results["pages"] += result.get("pages", 0)
+                results["failed_pages"] += result.get("failed_pages", 0)
 
                 if result["status"] == "error":
                     print(
@@ -385,11 +426,19 @@ def main():
         ):
             result = future.result()
             results[result["status"]] += 1
+            results["pages"] += result.get("pages", 0)
+            results["failed_pages"] += result.get("failed_pages", 0)
 
             if result["status"] == "error":
                 print(
                     f"\nError on {result['document']}: "
                     f"{result.get('error')}"
+                )
+
+            elif result.get("failed_pages", 0):
+                print(
+                    f"\nWarning: {result['document']} completed with "
+                    f"{result['failed_pages']} failed page(s)."
                 )
 
     print_result_summary(results, args.output_dir)

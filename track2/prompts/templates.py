@@ -1,39 +1,32 @@
-"""Track 2 prompt templates."""
+CSV_PROMPT = """Extract all data from this chart into a CSV table.
 
-CSV_PROMPT = """You are an expert chart data extractor. Convert the data in this chart image to a clean CSV.
+CRITICAL RULES:
+1. Header row first — use the exact axis labels or legend text as column names
+2. One row per data point — never skip or merge data points
+3. NEVER round numbers — 1247.3 stays 1247.3, never becomes 1247 or 1250
+4. NEVER use K/M/B — write 1500000 not 1.5M, write 42300 not 42.3K
+5. NEVER use currency symbols — write 42300 not $42,300
+6. For percentages keep the % sign: 45.2%
+7. For dates use exactly the format shown in the chart
+8. Output ONLY the raw CSV — no explanation, no markdown, no title row
 
-STRICT RULES:
-1. First row must be the header row with column names.
-2. Use comma as delimiter. Quote values containing commas with double quotes.
-3. NEVER round, abbreviate, or paraphrase numbers. If the chart shows 1,247.3 → output 1247.3 exactly.
-4. NEVER use K, M, B suffixes — write the full number (e.g. 1500000 not 1.5M).
-5. For dates/years use the format shown in the chart.
-6. Output ONLY the raw CSV text — no explanation, no markdown fences, no preamble.
-
-Example output:
+Correct example:
 Year,Revenue,Profit
 2020,1200000,340000
-2021,1450000,410000
-"""
+2021,1450000,410000"""
 
-SUMMARY_PROMPT = """You are an expert chart analyst. Write a concise, grounded summary of this chart.
+SUMMARY_PROMPT = """Write a factual data-driven summary of this chart.
 
-STRICT RULES:
-1. State the chart type in the first sentence (bar chart, line chart, pie chart, scatter plot, etc.).
-2. You MUST include the exact numeric values for:
-   - The highest data point (name + value)
-   - The lowest data point (name + value)
-   - The overall trend or key insight
-   - Any notable outlier or turning point
-3. Write in flowing prose — no bullet points, no lists.
-4. Keep it to 3–5 sentences.
-5. NEVER round or paraphrase numbers. Write exact values as shown in the chart.
-6. Output ONLY the summary text — no preamble like "This chart shows..." at the very start.
-   Begin directly with the chart type and topic.
+MANDATORY STRUCTURE — follow this exactly:
+Sentence 1: Chart type + topic (e.g. "This bar chart shows annual revenue by region from 2018 to 2023.")
+Sentence 2: Highest value — state the EXACT label and EXACT number (e.g. "The highest value was North America in 2023 at 4,250,000.")
+Sentence 3: Lowest value — state the EXACT label and EXACT number (e.g. "The lowest was Africa in 2018 at 320,000.")
+Sentence 4: Overall trend (e.g. "Revenue grew consistently across all regions, with a compound annual growth rate of approximately 12%.")
+Sentence 5: One notable outlier or comparison if visible in the chart.
 
-Example:
-"The bar chart compares annual revenue across five product categories from 2019 to 2023.
-Electronics led with $4.2M in 2023, while Stationery had the lowest revenue at $0.8M the same year.
-Overall revenue grew steadily at approximately 12% per year, with a notable dip in 2020
-when total revenue fell to $8.1M due to supply chain disruptions."
+CRITICAL RULES:
+- NEVER round numbers — write exact values as they appear in the chart
+- NEVER use K/M/B — write 4250000 not 4.25M
+- Include units if shown (%, $, kg etc.)
+- Output ONLY the summary — no preamble, no "Here is a summary:"
 """

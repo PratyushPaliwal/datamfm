@@ -1,0 +1,37 @@
+pipeline:
+  csv_model: granite_chart2csv
+  summary_model: qwen_text
+  granite_model_name: ibm-granite/granite-vision-3.3-2b-chart2csv-preview
+  qwen_text_model_name: Qwen/Qwen2.5-3B-Instruct
+  max_workers: 1
+  max_new_tokens: 768
+  summary_max_new_tokens: 180
+  splits:
+    - real
+    - synthetic
+
+output:
+  csv_file: chart2csv_predictions.jsonl
+  summary_file: chart2summary_predictions.jsonl
+
+postprocess:
+  strip_code_fences: true
+  validate_csv: true
+
+prompts:
+  granite_csv_prompt: |
+    Extract all visible data from this chart into a CSV table.
+
+    Rules:
+    - Return only raw CSV.
+    - Do not include explanations.
+    - Do not include Markdown code fences.
+    - First row must be the header.
+    - Use exact axis labels or legend labels as column names when visible.
+    - Use one row per data point.
+    - Do not skip visible data points.
+    - Preserve numbers as accurately as possible.
+    - Do not use K, M or B abbreviations. Convert them to full numbers.
+    - Remove currency symbols from numeric cells.
+    - Keep percentage signs if the chart uses percentages.
+    - Use comma separators only as CSV delimiters.
