@@ -1,23 +1,26 @@
 """
-Local scorer for Track 2 — Chart Understanding.
+Local scorer for Track 2 — uses actual GT format from challenge.
 
-Computes all 4 official metrics against ground-truth JSONL files:
-  - CSV Numeric F1
-  - CSV Structural Score
-  - Summary ROUGE-L
-  - Summary Numeric Fact F1
+GT format (from ground_truth_sample_partial):
+  CSV:     {"imagename": "...", "csv": "..."}        ← key is "csv" not "gt_csv"
+  Summary: {"imagename": "...", "summary": "..."}    ← key is "summary" not "gt_summary"
+
+Prediction format:
+  CSV:     {"imagename": "...", "predicted_csv": "..."}
+  Summary: {"imagename": "...", "predicted_summary": "..."}
 
 Usage:
-    python evaluation/score_track2.py \
-        --predictions  submission/track2_sample \
-        --ground_truth data/charts_gt \
-        --split        real
+    # Score against provided GT samples
+    python -m evaluation.score_track2 \
+        --predictions submission/track2_sample \
+        --ground_truth datamfm_submission_format_examples/chart_understanding/ground_truth_sample_partial \
+        --split real
 
-Ground-truth JSONL format (same keys as predictions):
-    {"imagename": "chart1.png", "gt_csv": "Year,Value\n2020,100", "gt_summary": "The bar chart..."}
-
-If you don't have ground truth yet, run with --show_only to just print
-your predictions and visually inspect them.
+    # Inspect predictions only (no GT needed)
+    python -m evaluation.score_track2 \
+        --predictions submission/track2_sample \
+        --split real \
+        --show_only
 """
 
 import argparse
@@ -25,21 +28,17 @@ import csv
 import io
 import json
 import re
-import sys
 from pathlib import Path
 from collections import defaultdict
 
 
-# ─── CSV metrics ────────────────────────────────────────────────────────────
+# ── Metric implementations ───────────────────────────────────────────────────
 
 def extract_numbers(text: str) -> list[float]:
-    """Pull all numbers out of a string, handling CSV comma separators."""
-    # Replace commas that are CSV delimiters (between non-digit chars) with spaces
-    # but keep commas that are part of numbers like 1,247
-    cleaned = re.sub(r"(?<!\d),(?!\d)", " ", text)
-    raw = re.findall(r"-?\d+(?:\.\d+)?", cleaned)
+    """Extract numbers handling CSV commas correctly."""
+    cleaned = re.sub(r'(?<!\d),(?!\d)', ' ', text)
     nums = []
-    for r in raw:
+    for r in re.findall(r'-?\d+\.?\d*', cleaned):
         try:
             nums.append(float(r))
         except ValueError:
@@ -48,55 +47,40 @@ def extract_numbers(text: str) -> list[float]:
 
 
 def numbers_match(a: float, b: float, tol: float = 0.01) -> bool:
-    """Two numbers match if they're within 1% of each other."""
     if b == 0:
-        return a == 0
+        return abs(a) < 1e-9
     return abs(a - b) / abs(b) <= tol
 
 
-def csv_numeric_f1(pred_csv: str, gt_csv: str) -> float:
-    """
-    F1 on numeric values. Each number in GT must be matched by a number in pred.
-    Tolerance: 1%.
-    """
-    pred_nums = extract_numbers(pred_csv)
-    gt_nums   = extract_numbers(gt_csv)
-
+def csv_numeric_f1(pred: str, gt: str) -> float:
+    pred_nums = extract_numbers(pred)
+    gt_nums   = extract_numbers(gt)
     if not gt_nums:
         return 1.0 if not pred_nums else 0.0
-
     gt_matched   = [False] * len(gt_nums)
     pred_matched = [False] * len(pred_nums)
-
     for i, g in enumerate(gt_nums):
         for j, p in enumerate(pred_nums):
             if not pred_matched[j] and numbers_match(p, g):
-                gt_matched[i]   = True
-                pred_matched[j] = True
+                gt_matched[i] = pred_matched[j] = True
                 break
-
     tp = sum(gt_matched)
     precision = tp / len(pred_nums) if pred_nums else 0.0
     recall    = tp / len(gt_nums)
     if precision + recall == 0:
         return 0.0
-    return 2 * precision * recall / (precision + recall)
+    return round(2 * precision * recall / (precision + recall), 4)
 
 
-def csv_structural_score(pred_csv: str, gt_csv: str) -> float:
-    """
-    Score based on structural match: correct number of columns, rows,
-    and header names.
-    """
+def csv_structural_score(pred: str, gt: str) -> float:
     def parse(text):
         try:
-            rows = list(csv.reader(io.StringIO(text.strip())))
-            return rows
+            return list(csv.reader(io.StringIO(text.strip())))
         except Exception:
             return []
 
-    pred_rows = parse(pred_csv)
-    gt_rows   = parse(gt_csv)
+    pred_rows = parse(pred)
+    gt_rows   = parse(gt)
 
     if not gt_rows:
         return 1.0 if not pred_rows else 0.0
@@ -104,73 +88,59 @@ def csv_structural_score(pred_csv: str, gt_csv: str) -> float:
         return 0.0
 
     score = 0.0
-
-    # Column count match (40% weight)
     gt_cols   = len(gt_rows[0])
     pred_cols = len(pred_rows[0]) if pred_rows else 0
-    score += 0.4 * (1.0 if gt_cols == pred_cols else max(0, 1 - abs(gt_cols - pred_cols) / gt_cols))
+    score += 0.4 * (1.0 if gt_cols == pred_cols
+                    else max(0, 1 - abs(gt_cols - pred_cols) / gt_cols))
 
-    # Row count match (30% weight)
-    gt_data_rows   = len(gt_rows) - 1
-    pred_data_rows = len(pred_rows) - 1 if len(pred_rows) > 1 else 0
-    if gt_data_rows > 0:
-        score += 0.3 * max(0, 1 - abs(gt_data_rows - pred_data_rows) / gt_data_rows)
-    else:
-        score += 0.3
+    gt_rows_n   = max(len(gt_rows) - 1, 1)
+    pred_rows_n = max(len(pred_rows) - 1, 0)
+    score += 0.3 * max(0, 1 - abs(gt_rows_n - pred_rows_n) / gt_rows_n)
 
-    # Header overlap (30% weight)
     if gt_rows and pred_rows:
-        gt_headers   = {h.strip().lower() for h in gt_rows[0]}
-        pred_headers = {h.strip().lower() for h in pred_rows[0]}
-        if gt_headers:
-            overlap = len(gt_headers & pred_headers) / len(gt_headers)
-            score += 0.3 * overlap
+        gt_h   = {h.strip().lower() for h in gt_rows[0]}
+        pred_h = {h.strip().lower() for h in pred_rows[0]}
+        if gt_h:
+            score += 0.3 * len(gt_h & pred_h) / len(gt_h)
 
     return round(score, 4)
 
 
-# ─── Summary metrics ─────────────────────────────────────────────────────────
-
-def lcs_length(a: list, b: list) -> int:
-    """Longest common subsequence length."""
-    if not a or not b:
-        return 0
+def lcs(a: list, b: list) -> int:
     m, n = len(a), len(b)
     dp = [[0] * (n + 1) for _ in range(2)]
     for i in range(1, m + 1):
         for j in range(1, n + 1):
             if a[i-1] == b[j-1]:
-                dp[i % 2][j] = dp[(i-1) % 2][j-1] + 1
+                dp[i%2][j] = dp[(i-1)%2][j-1] + 1
             else:
-                dp[i % 2][j] = max(dp[(i-1) % 2][j], dp[i % 2][j-1])
-    return dp[m % 2][n]
+                dp[i%2][j] = max(dp[(i-1)%2][j], dp[i%2][j-1])
+    return dp[m%2][n]
 
 
 def rouge_l(pred: str, gt: str) -> float:
-    """ROUGE-L F1 score."""
-    pred_tokens = pred.lower().split()
-    gt_tokens   = gt.lower().split()
-    if not gt_tokens:
-        return 1.0 if not pred_tokens else 0.0
-    if not pred_tokens:
+    pt = pred.lower().split()
+    gt_t = gt.lower().split()
+    if not gt_t:
+        return 1.0 if not pt else 0.0
+    if not pt:
         return 0.0
-    lcs = lcs_length(pred_tokens, gt_tokens)
-    precision = lcs / len(pred_tokens)
-    recall    = lcs / len(gt_tokens)
-    if precision + recall == 0:
+    l = lcs(pt, gt_t)
+    p = l / len(pt)
+    r = l / len(gt_t)
+    if p + r == 0:
         return 0.0
-    return round(2 * precision * recall / (precision + recall), 4)
+    return round(2 * p * r / (p + r), 4)
 
 
 def numeric_fact_f1(pred: str, gt: str) -> float:
-    """F1 on numbers appearing in the summary text."""
     return csv_numeric_f1(pred, gt)
 
 
-# ─── Loading helpers ─────────────────────────────────────────────────────────
+# ── Loaders ──────────────────────────────────────────────────────────────────
 
-def load_jsonl(path: Path) -> dict[str, dict]:
-    """Load a JSONL file as {imagename: record}."""
+def load_jsonl(path: Path, value_key: str) -> dict[str, str]:
+    """Load JSONL, return {imagename: value}. Handles multiple key aliases."""
     records = {}
     if not path.exists():
         return records
@@ -181,142 +151,150 @@ def load_jsonl(path: Path) -> dict[str, dict]:
                 continue
             try:
                 obj = json.loads(line)
-                records[obj["imagename"]] = obj
-            except Exception as e:
-                print(f"  Warning: skipping malformed line in {path.name}: {e}")
+                name = (obj.get("imagename") or obj.get("image_name")
+                        or obj.get("filename") or obj.get("id", ""))
+                # Try multiple key aliases for the value
+                aliases = [value_key, "prediction", "output",
+                           "csv", "summary", "predicted_csv",
+                           "predicted_summary"]
+                val = next((obj[k] for k in aliases if k in obj), "")
+                records[name] = val
+            except Exception:
+                pass
     return records
 
 
-# ─── Main ────────────────────────────────────────────────────────────────────
+# ── Scoring ──────────────────────────────────────────────────────────────────
 
-def score_split(pred_dir: Path, gt_dir: Path, split: str, show_only: bool = False):
-    pred_csv_path     = pred_dir / split / "chart2csv_predictions.jsonl"
-    pred_summary_path = pred_dir / split / "chart2summary_predictions.jsonl"
-    gt_path           = gt_dir / split / "ground_truth.jsonl"
+def score_split(pred_dir: Path, gt_dir: Path, split: str,
+                show_only: bool = False):
+    pred_csv_path = pred_dir / split / "chart2csv_predictions.jsonl"
+    pred_sum_path = pred_dir / split / "chart2summary_predictions.jsonl"
+    gt_csv_path   = gt_dir  / split / "chart2csv_gt_sample.jsonl"
+    gt_sum_path   = gt_dir  / split / "chart2summary_gt_sample.jsonl"
 
-    pred_csv     = load_jsonl(pred_csv_path)
-    pred_summary = load_jsonl(pred_summary_path)
-    gt           = load_jsonl(gt_path) if not show_only else {}
+    pred_csvs  = load_jsonl(pred_csv_path,  "predicted_csv")
+    pred_sums  = load_jsonl(pred_sum_path,  "predicted_summary")
+    gt_csvs    = load_jsonl(gt_csv_path,    "csv")
+    gt_sums    = load_jsonl(gt_sum_path,    "summary")
 
-    if not pred_csv and not pred_summary:
+    all_images = sorted(set(list(pred_csvs.keys()) + list(pred_sums.keys())))
+    if not all_images:
         print(f"  No predictions found in {pred_dir / split}")
         return None
 
-    all_images = sorted(set(list(pred_csv.keys()) + list(pred_summary.keys())))
-    print(f"\n{'='*60}")
-    print(f"Split: {split}  |  Images: {len(all_images)}")
-    print(f"{'='*60}")
+    print(f"\n{'='*65}")
+    print(f"Split: {split}  |  Predictions: {len(all_images)}")
+    print(f"GT available: CSV={len(gt_csvs)}  Summary={len(gt_sums)}")
+    print(f"{'='*65}")
 
     if show_only:
-        # Just print predictions for visual inspection
-        for img in all_images[:10]:
+        for img in all_images[:5]:
             print(f"\n--- {img} ---")
-            if img in pred_csv:
-                csv_val = pred_csv[img].get("predicted_csv", "")
-                print(f"CSV ({len(csv_val.splitlines())} rows):\n{csv_val[:300]}")
-            if img in pred_summary:
-                print(f"\nSummary:\n{pred_summary[img].get('predicted_summary', '')}")
-        if len(all_images) > 10:
-            print(f"\n... and {len(all_images) - 10} more images")
+            csv_val = pred_csvs.get(img, "")
+            print(f"CSV ({len(csv_val.splitlines())} rows):\n{csv_val[:300]}")
+            sum_val = pred_sums.get(img, "")
+            print(f"\nSummary ({len(sum_val.split())} words):\n{sum_val[:400]}")
+        if len(all_images) > 5:
+            print(f"\n... and {len(all_images)-5} more")
         return None
 
-    # Score against ground truth
+    # Score against GT
     metrics = defaultdict(list)
     results = []
+    no_gt = 0
 
     for img in all_images:
-        if img not in gt:
+        if img not in gt_csvs and img not in gt_sums:
+            no_gt += 1
             continue
 
-        gt_rec  = gt[img]
-        gt_csv_text  = gt_rec.get("gt_csv", "")
-        gt_sum_text  = gt_rec.get("gt_summary", "")
+        pc = pred_csvs.get(img, "")
+        ps = pred_sums.get(img, "")
+        gc = gt_csvs.get(img, "")
+        gs = gt_sums.get(img, "")
 
-        pred_csv_text = pred_csv.get(img, {}).get("predicted_csv", "")
-        pred_sum_text = pred_summary.get(img, {}).get("predicted_summary", "")
+        m1 = csv_numeric_f1(pc, gc)     if gc else None
+        m2 = csv_structural_score(pc, gc) if gc else None
+        m3 = rouge_l(ps, gs)            if gs else None
+        m4 = numeric_fact_f1(ps, gs)    if gs else None
 
-        m_csv_num    = csv_numeric_f1(pred_csv_text, gt_csv_text)
-        m_csv_struct = csv_structural_score(pred_csv_text, gt_csv_text)
-        m_rouge      = rouge_l(pred_sum_text, gt_sum_text)
-        m_num_fact   = numeric_fact_f1(pred_sum_text, gt_sum_text)
-        m_overall    = (m_csv_num + m_csv_struct + m_rouge + m_num_fact) / 4
+        scored = [m for m in [m1, m2, m3, m4] if m is not None]
+        overall = sum(scored) / len(scored) if scored else 0.0
 
-        metrics["csv_numeric_f1"].append(m_csv_num)
-        metrics["csv_structural"].append(m_csv_struct)
-        metrics["rouge_l"].append(m_rouge)
-        metrics["numeric_fact_f1"].append(m_num_fact)
-        metrics["overall"].append(m_overall)
+        if m1 is not None: metrics["csv_numeric_f1"].append(m1)
+        if m2 is not None: metrics["csv_structural"].append(m2)
+        if m3 is not None: metrics["rouge_l"].append(m3)
+        if m4 is not None: metrics["numeric_fact_f1"].append(m4)
+        metrics["overall"].append(overall)
 
         results.append({
             "image": img,
-            "csv_numeric_f1": round(m_csv_num, 3),
-            "csv_structural": round(m_csv_struct, 3),
-            "rouge_l": round(m_rouge, 3),
-            "numeric_fact_f1": round(m_num_fact, 3),
-            "overall": round(m_overall, 3),
+            "csv_f1": round(m1, 3) if m1 is not None else "-",
+            "struct": round(m2, 3) if m2 is not None else "-",
+            "rouge":  round(m3, 3) if m3 is not None else "-",
+            "numfact":round(m4, 3) if m4 is not None else "-",
+            "overall":round(overall, 3),
         })
 
+    if no_gt:
+        print(f"  (skipped {no_gt} images with no GT match)")
+
     if not results:
-        print("  No images matched between predictions and ground truth.")
-        print("  Check that imagenames in your JSONL match the GT file.")
+        print("  No images matched GT. Check imagenames align.")
         return None
 
-    # Print per-image table
-    print(f"\n{'Image':<35} {'CSV-F1':>7} {'Struct':>7} {'ROUGE':>7} {'NumFact':>8} {'Overall':>8}")
+    print(f"\n{'Image':<36} {'CSV-F1':>7} {'Struct':>7} "
+          f"{'ROUGE':>7} {'NumFact':>8} {'Overall':>8}")
     print("-" * 78)
     for r in results:
-        name = r["image"][:33]
-        print(f"{name:<35} {r['csv_numeric_f1']:>7.3f} {r['csv_structural']:>7.3f} "
-              f"{r['rouge_l']:>7.3f} {r['numeric_fact_f1']:>8.3f} {r['overall']:>8.3f}")
+        print(f"{r['image'][:35]:<36} {str(r['csv_f1']):>7} "
+              f"{str(r['struct']):>7} {str(r['rouge']):>7} "
+              f"{str(r['numfact']):>8} {str(r['overall']):>8}")
 
-    # Averages
-    def avg(key): return sum(metrics[key]) / len(metrics[key])
+    def avg(k): return sum(metrics[k]) / len(metrics[k]) if metrics[k] else 0
 
-    print("\n" + "=" * 78)
-    print(f"{'AVERAGE':<35} {avg('csv_numeric_f1'):>7.3f} {avg('csv_structural'):>7.3f} "
-          f"{avg('rouge_l'):>7.3f} {avg('numeric_fact_f1'):>8.3f} {avg('overall'):>8.3f}")
-    print("=" * 78)
+    print(f"\n{'='*78}")
+    print(f"{'AVERAGE':<36} {avg('csv_numeric_f1'):>7.3f} "
+          f"{avg('csv_structural'):>7.3f} {avg('rouge_l'):>7.3f} "
+          f"{avg('numeric_fact_f1'):>8.3f} {avg('overall'):>8.3f}")
+    print(f"{'='*78}")
 
     print(f"""
-Summary ({split}):
-  CSV Numeric F1      : {avg('csv_numeric_f1'):.4f}   (are the numbers right?)
-  CSV Structural      : {avg('csv_structural'):.4f}   (right rows/cols/headers?)
-  Summary ROUGE-L     : {avg('rouge_l'):.4f}   (text overlap with reference)
-  Numeric Fact F1     : {avg('numeric_fact_f1'):.4f}   (numbers in summary correct?)
-  ─────────────────────────────
-  Overall             : {avg('overall'):.4f}
+Scores ({split}):
+  CSV Numeric F1    : {avg('csv_numeric_f1'):.4f}
+  CSV Structural    : {avg('csv_structural'):.4f}
+  Summary ROUGE-L   : {avg('rouge_l'):.4f}
+  Numeric Fact F1   : {avg('numeric_fact_f1'):.4f}
+  Overall           : {avg('overall'):.4f}
 """)
     return {k: avg(k) for k in metrics}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Score Track 2 predictions locally")
-    parser.add_argument("--predictions",  type=Path, required=True,
-                        help="Dir containing real/ and synthetic/ JSONL files")
-    parser.add_argument("--ground_truth", type=Path, default=None,
-                        help="Dir containing GT JSONL files (optional — omit to use --show_only)")
-    parser.add_argument("--split", type=str, default=None,
-                        help="Score only this split: real | synthetic")
-    parser.add_argument("--show_only", action="store_true",
-                        help="Print predictions without scoring (no GT needed)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--predictions",  type=Path, required=True)
+    parser.add_argument("--ground_truth", type=Path, default=None)
+    parser.add_argument("--split",        type=str,  default=None)
+    parser.add_argument("--show_only",    action="store_true")
     args = parser.parse_args()
 
+    splits = [args.split] if args.split else ["real", "synthetic"]
+
     if args.show_only or args.ground_truth is None:
-        splits = [args.split] if args.split else ["real", "synthetic"]
         for split in splits:
             score_split(args.predictions, Path("."), split, show_only=True)
         return
 
-    splits = [args.split] if args.split else ["real", "synthetic"]
     all_scores = {}
     for split in splits:
-        scores = score_split(args.predictions, args.ground_truth, split)
-        if scores:
-            all_scores[split] = scores
+        s = score_split(args.predictions, args.ground_truth, split)
+        if s:
+            all_scores[split] = s
 
     if len(all_scores) > 1:
-        print("\n=== Combined average across splits ===")
         keys = list(next(iter(all_scores.values())).keys())
+        print("\n=== Combined average ===")
         for k in keys:
             avg = sum(s[k] for s in all_scores.values()) / len(all_scores)
             print(f"  {k:<25}: {avg:.4f}")

@@ -1,58 +1,124 @@
 """
-Build the final submission.zip for EvalAI upload.
+Build and validate the submission zip for EvalAI.
+
+Submission structure (from README):
+  submission.zip
+  ├── real/
+  │   ├── chart2csv_predictions.jsonl
+  │   └── chart2summary_predictions.jsonl
+  └── synthetic/
+      ├── chart2csv_predictions.jsonl
+      └── chart2summary_predictions.jsonl
+
 Usage:
-    python scripts/build_submission.py
+    python scripts/build_submission.py \
+        --output_dir submission/track2_full \
+        --out submission/submission_chart.zip
 """
 
+import argparse
+import json
 import zipfile
 from pathlib import Path
-import subprocess
-import sys
 
 
-def validate_first():
-    """Run validation before zipping."""
-    print("Running validation before building zip...\n")
-    for track, output_dir in [(1, "submission/track1"), (2, "submission/track2")]:
-        result = subprocess.run(
-            [sys.executable, "scripts/validate.py",
-             "--track", str(track), "--output_dir", output_dir],
-            capture_output=False
-        )
-        if result.returncode != 0:
-            return False
-    return True
+def validate_jsonl(path: Path, value_key: str) -> tuple[int, list[str]]:
+    """Returns (count, errors)."""
+    if not path.exists():
+        return 0, [f"Missing file: {path}"]
+    errors = []
+    count = 0
+    with open(path) as f:
+        for i, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if "imagename" not in obj:
+                    errors.append(f"Line {i+1}: missing 'imagename'")
+                if value_key not in obj:
+                    errors.append(f"Line {i+1}: missing '{value_key}'")
+                count += 1
+            except json.JSONDecodeError as e:
+                errors.append(f"Line {i+1}: JSON error: {e}")
+    return count, errors
 
 
-def build_zip(output_path: Path = Path("submission/submission.zip")):
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+def validate_output(output_dir: Path) -> bool:
+    print("\nValidating output...")
+    all_ok = True
+    splits = ["real", "synthetic"]
 
-    track1_dir = Path("submission/track1")
-    track2_dir = Path("submission/track2")
+    for split in splits:
+        split_dir = output_dir / split
+        print(f"\n  [{split}]")
 
-    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Track 1: .md files
-        if track1_dir.exists():
-            files = list(track1_dir.rglob("*.md"))
-            print(f"\nAdding Track 1: {len(files)} .md files")
-            for f in files:
-                zf.write(f, f.relative_to(track1_dir))
+        for fname, key in [
+            ("chart2csv_predictions.jsonl", "predicted_csv"),
+            ("chart2summary_predictions.jsonl", "predicted_summary"),
+        ]:
+            fpath = split_dir / fname
+            count, errors = validate_jsonl(fpath, key)
+            if errors:
+                print(f"    {fname}: {count} rows — ERRORS:")
+                for e in errors[:5]:
+                    print(f"      {e}")
+                all_ok = False
+            else:
+                print(f"    {fname}: {count} rows — OK")
 
-        # Track 2: .jsonl files
-        if track2_dir.exists():
-            files = list(track2_dir.rglob("*.jsonl"))
-            print(f"Adding Track 2: {len(files)} .jsonl files")
-            for f in files:
-                zf.write(f, f.relative_to(track2_dir))
+    return all_ok
 
-    size_mb = output_path.stat().st_size / 1_048_576
-    print(f"\nSubmission zip created: {output_path} ({size_mb:.1f} MB)")
-    print("Upload to: https://eval.ai/web/challenges/list")
+
+def build_zip(output_dir: Path, zip_path: Path):
+    splits = ["real", "synthetic"]
+    files_added = 0
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for split in splits:
+            for fname in ["chart2csv_predictions.jsonl",
+                          "chart2summary_predictions.jsonl"]:
+                fpath = output_dir / split / fname
+                if fpath.exists():
+                    arcname = f"{split}/{fname}"
+                    zf.write(fpath, arcname)
+                    files_added += 1
+                    print(f"  Added: {arcname} ({fpath.stat().st_size/1024:.0f} KB)")
+                else:
+                    print(f"  MISSING: {split}/{fname}")
+
+    size_mb = zip_path.stat().st_size / 1_048_576
+    print(f"\nZip: {zip_path} ({size_mb:.1f} MB) | {files_added} files")
+    return files_added == 4  # must have all 4 files
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output_dir", type=Path,
+                        default=Path("submission/track2_full"))
+    parser.add_argument("--out",        type=Path,
+                        default=Path("submission/submission_chart.zip"))
+    parser.add_argument("--skip_validation", action="store_true")
+    args = parser.parse_args()
+
+    if not args.skip_validation:
+        ok = validate_output(args.output_dir)
+        if not ok:
+            print("\nValidation failed — fix errors before submitting.")
+            return
+
+    print("\nBuilding submission zip...")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    success = build_zip(args.output_dir, args.out)
+
+    if success:
+        print(f"\n✅ Ready to submit: {args.out}")
+        print("   Upload to: https://eval.ai  → DataMFM → Submit")
+        print("   Select: Task = Chart Understanding")
+    else:
+        print("\n⚠️  Some files missing — check output directory")
 
 
 if __name__ == "__main__":
-    if validate_first():
-        build_zip()
-    else:
-        print("\nValidation failed — fix errors before building zip.")
-        sys.exit(1)
+    main()

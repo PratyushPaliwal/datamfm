@@ -1,6 +1,10 @@
 """
-Track 2 model runners — CSV extraction and summary generation.
-Supports: openrouter (free), gemini, claude
+Track 2 model runner — two-step grounded pipeline.
+
+Step 1: Extract CSV from chart image
+Step 2: Generate summary using BOTH image + CSV (grounded)
+
+This is the key architectural decision that drives Numeric Fact F1.
 """
 
 import base64
@@ -10,8 +14,10 @@ from pathlib import Path
 
 def encode_image(image_path: Path) -> tuple[str, str]:
     suffix = image_path.suffix.lower()
-    media_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                 ".png": "image/png", ".webp": "image/webp"}
+    media_map = {
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".png": "image/png", ".webp": "image/webp",
+    }
     media_type = media_map.get(suffix, "image/jpeg")
     with open(image_path, "rb") as f:
         data = base64.standard_b64encode(f.read()).decode("utf-8")
@@ -19,29 +25,44 @@ def encode_image(image_path: Path) -> tuple[str, str]:
 
 
 def extract_csv(image_path: Path, config: dict) -> str:
-    model = config["pipeline"].get("csv_model", "meta-llama/llama-4-scout:free")
+    """Step 1 — extract CSV from chart image."""
     from track2.prompts.templates import CSV_PROMPT
-    if "gemini" in model:
-        return _gemini(image_path, CSV_PROMPT, model)
-    elif "claude" in model:
-        return _claude(image_path, CSV_PROMPT)
-    else:
-        return _openrouter(image_path, CSV_PROMPT, model)
+    model = config["pipeline"].get("csv_model", "openrouter/free")
+    return _call_model(image_path, CSV_PROMPT, model, config)
 
 
-def generate_summary(image_path: Path, config: dict) -> str:
-    model = config["pipeline"].get("summary_model", "meta-llama/llama-4-scout:free")
-    from track2.prompts.templates import SUMMARY_PROMPT
-    if "gemini" in model:
-        return _gemini(image_path, SUMMARY_PROMPT, model)
-    elif "claude" in model:
-        return _claude(image_path, SUMMARY_PROMPT)
+def generate_summary(image_path: Path, config: dict,
+                     csv_text: str = None) -> str:
+    """
+    Step 2 — generate grounded summary.
+    If csv_text is provided, uses grounded prompt (image + CSV).
+    If not, falls back to image-only prompt.
+    """
+    model = config["pipeline"].get("summary_model", "openrouter/free")
+
+    if csv_text and csv_text.strip():
+        from track2.prompts.templates import GROUNDED_SUMMARY_PROMPT
+        prompt = GROUNDED_SUMMARY_PROMPT.format(csv_data=csv_text)
     else:
-        return _openrouter(image_path, SUMMARY_PROMPT, model)
+        from track2.prompts.templates import SUMMARY_PROMPT
+        prompt = SUMMARY_PROMPT
+
+    return _call_model(image_path, prompt, model, config)
+
+
+def _call_model(image_path: Path, prompt: str, model: str,
+                config: dict) -> str:
+    """Route to the right API based on model name."""
+    if "gemini" in model:
+        return _gemini(image_path, prompt, model)
+    elif "claude" in model or "anthropic" in model:
+        return _claude(image_path, prompt)
+    else:
+        # Default: OpenRouter
+        return _openrouter(image_path, prompt, model)
 
 
 def _openrouter(image_path: Path, prompt: str, model_name: str) -> str:
-    """Call any OpenRouter model (free or paid) using OpenAI-compatible SDK."""
     from openai import OpenAI
     img_data, media_type = encode_image(image_path)
     client = OpenAI(
@@ -50,16 +71,14 @@ def _openrouter(image_path: Path, prompt: str, model_name: str) -> str:
     )
     response = client.chat.completions.create(
         model=model_name,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:{media_type};base64,{img_data}"
-                }},
-            ],
-        }],
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {
+                "url": f"data:{media_type};base64,{img_data}"
+            }},
+        ]}],
         max_tokens=2048,
+        temperature=0.1,
     )
     return response.choices[0].message.content
 
@@ -85,7 +104,9 @@ def _claude(image_path: Path, prompt: str) -> str:
         max_tokens=2048,
         messages=[{"role": "user", "content": [
             {"type": "image", "source": {
-                "type": "base64", "media_type": media_type, "data": img_data,
+                "type": "base64",
+                "media_type": media_type,
+                "data": img_data,
             }},
             {"type": "text", "text": prompt},
         ]}],

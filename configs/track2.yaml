@@ -1,22 +1,21 @@
-# Track 2 — Chart Understanding Configuration
+# Track 2 — Chart Understanding (optimised config)
 
 pipeline:
-  csv_model: openrouter/free              # options: claude | gemini-2.5-pro | qwen3-vl
+  # Best free vision model for chart data extraction
+  csv_model: openrouter/free
   summary_model: openrouter/free
-  
-  # Run both tasks in parallel per image
-  parallel_tasks: true
-  max_workers: 1                    # keep at 1 during testing, increase for full run
 
-  # Splits to process
+  # Keep at 1 for free tier rate limits; increase for paid/HPC
+  max_workers: 1
+
   splits:
     - real
     - synthetic
 
 postprocess:
-  enforce_numeric_precision: true
+  # Conservative — don't over-normalise, GT preserves original label text
+  normalise_numbers: true
   validate_csv: true
-  min_numbers_in_summary: 3
 
 output:
   csv_file: chart2csv_predictions.jsonl
