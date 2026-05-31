@@ -1,14 +1,13 @@
-# Track 1 — Document Parsing Configuration
-# Current baseline: Docling only, no Claude, no Gemini, no PaddleOCR-VL.
-
 pipeline:
-  primary_model: docling
+  primary_model: mineru
   max_workers: 1
+  mineru_cmd: mineru
+  page_timeout: 180
 
 postprocess:
   normalise_text: true
   lint_html_tables: true
-  validate_latex: false
+  validate_latex: true
   sort_by_bbox: false
 
 output:

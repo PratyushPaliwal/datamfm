@@ -1,13 +1,9 @@
 """
 Track 2 model runners for Chart Understanding.
 
-Pipeline:
+Granite-only version:
     chart image -> Granite Chart2CSV -> CSV
-    cleaned CSV -> summary
-
-Supported summary modes:
-    - rule_based_facts
-    - qwen_text
+    cleaned CSV -> fact-based rule summary
 
 No DePlot.
 No OpenRouter.
@@ -23,10 +19,6 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-
-# ============================================================
-# Granite Chart2CSV
-# ============================================================
 
 @lru_cache(maxsize=1)
 def _load_granite_chart2csv(model_name: str):
@@ -185,10 +177,6 @@ def _decode_generated_output(processor, generated_ids, inputs) -> str:
 
     return output.strip()
 
-
-# ============================================================
-# CSV cleaning
-# ============================================================
 
 def _clean_model_csv_output(text: str) -> str:
     """
@@ -371,46 +359,8 @@ def _normalize_csv_rows(rows: list[list[str]]) -> str:
 
     return out.getvalue().strip()
 
-
-# ============================================================
-# Summary generation
-# ============================================================
-
-def generate_summary_from_csv(csv_text: str, config: dict) -> str:
-    """
-    Generate summary from cleaned CSV.
-
-    Supports:
-        - rule_based
-        - rule_based_facts
-        - qwen_text
-    """
-    model = config.get("pipeline", {}).get(
-        "summary_model",
-        "rule_based_facts",
-    ).lower()
-
-    if model in {"rule_based", "rule_based_facts"}:
-        return _rule_based_summary_from_csv(csv_text)
-
-    if model in {"qwen_text", "qwen", "qwen2.5"}:
-        return _qwen_summary_from_csv(csv_text, config)
-
-    raise ValueError(
-        f"Unknown summary_model: {model}. "
-        "Supported: rule_based, rule_based_facts, qwen_text."
-    )
-
-
-# ============================================================
-# Qwen text summary
-# ============================================================
-
 @lru_cache(maxsize=1)
 def _load_qwen_text_model(model_name: str):
-    """
-    Load Qwen text model once and cache it.
-    """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -436,9 +386,6 @@ def _load_qwen_text_model(model_name: str):
 
 
 def _qwen_summary_from_csv(csv_text: str, config: dict) -> str:
-    """
-    Generate a natural-language summary from cleaned CSV and verified facts.
-    """
     import torch
 
     model_name = config.get("pipeline", {}).get(
@@ -454,12 +401,15 @@ def _qwen_summary_from_csv(csv_text: str, config: dict) -> str:
 
 Write a concise natural-language chart summary in 2 to 4 sentences.
 
-Rules:
-- Use exact numbers from the CSV or verified facts.
-- Mention the main topic or comparison.
-- Mention the highest value and lowest value if available.
-- Mention one important trend, contrast or spread.
-- Do not invent numbers.
+Critical rules:
+- Use ONLY the CSV and verified facts.
+- Do NOT infer percentages from Yes/No values.
+- Do NOT convert Yes/No into 100% or 0%.
+- Do NOT swap column meanings.
+- Use exact labels and exact numbers from the verified facts.
+- Do not add numbers that are not in the CSV or verified facts.
+- If verified facts say no clear numeric metric was detected, return that idea in one natural sentence.
+- Do not invent chart topics that are not present in the CSV.
 - Do not say "the chart compares X across N entries" unless it sounds natural.
 - Output only the summary.
 
@@ -469,7 +419,7 @@ CSV:
 Verified facts:
 {verified_facts}
 
-Summary:"""
+Write the summary now:"""
 
     messages = [
         {
@@ -504,7 +454,6 @@ Summary:"""
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=False,
-            temperature=0.0,
         )
 
     generated = output_ids[:, inputs["input_ids"].shape[-1]:]
@@ -517,16 +466,204 @@ Summary:"""
     summary = summary.replace("Summary:", "").strip()
     summary = " ".join(summary.split())
 
-    # Fallback if Qwen gives empty output.
     if not summary:
         return verified_facts
 
     return summary
 
+def _csv_has_repeated_constant_count_column(csv_text: str) -> bool:
+    """
+    Detect tables like:
+        State,Population Range,Number of States
+        Georgia,200000-250000,1
+        Colorado,200000-250000,1
 
-# ============================================================
-# Rule-based verified facts
-# ============================================================
+    These are usually expanded list/count tables. Qwen may hallucinate that
+    every state has '1 state', so use rule-based fallback.
+    """
+    try:
+        rows = list(csv.reader(io.StringIO(csv_text)))
+    except Exception:
+        return False
+
+    if len(rows) < 5:
+        return False
+
+    header = [h.strip().lower() for h in rows[0]]
+    data = rows[1:]
+
+    count_like_names = {
+        "number of states",
+        "number",
+        "count",
+        "states",
+    }
+
+    for idx, name in enumerate(header):
+        if name not in count_like_names:
+            continue
+
+        values = []
+        for row in data:
+            if idx >= len(row):
+                continue
+
+            value = _numeric_value(row[idx])
+            if value is not None:
+                values.append(value)
+
+        if len(values) >= 5 and len(set(values)) == 1:
+            return True
+
+    return False
+def _csv_has_mostly_boolean_values(csv_text: str) -> bool:
+    try:
+        rows = list(csv.reader(io.StringIO(csv_text)))
+    except Exception:
+        return False
+
+    if len(rows) < 2:
+        return False
+
+    values = []
+    for row in rows[1:]:
+        for cell in row[1:]:
+            val = cell.strip().lower()
+            if val:
+                values.append(val)
+
+    if not values:
+        return False
+
+    boolean_like = {"yes", "no", "true", "false", "y", "n"}
+    count_boolean = sum(1 for v in values if v in boolean_like)
+
+    return count_boolean / max(len(values), 1) > 0.5
+
+
+def _csv_is_too_weak_for_qwen(csv_text: str) -> bool:
+    try:
+        rows = list(csv.reader(io.StringIO(csv_text)))
+    except Exception:
+        return True
+
+    if len(rows) < 2:
+        return True
+
+    if len(rows) == 2:
+        return False
+
+    data = rows[1:]
+    numeric_cells = 0
+    total_cells = 0
+
+    for row in data:
+        for cell in row[1:]:
+            val = cell.strip()
+            if not val:
+                continue
+
+            total_cells += 1
+
+            if _numeric_value(val) is not None:
+                numeric_cells += 1
+
+    if total_cells == 0:
+        return True
+
+    numeric_ratio = numeric_cells / total_cells
+    return numeric_ratio < 0.25
+
+
+def _summary_has_unsupported_100_percent(summary: str, csv_text: str) -> bool:
+    lower_summary = summary.lower()
+
+    if "100%" not in lower_summary and "100 percent" not in lower_summary:
+        return False
+
+    lower_csv = csv_text.lower()
+    return "100" not in lower_csv and "100%" not in lower_csv
+
+
+def _extract_numbers(text: str) -> set[str]:
+    nums = re.findall(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?%?", text)
+    return set(n.strip() for n in nums if n.strip())
+
+
+def _normalize_num_token(token: str) -> str:
+    return token.strip().replace(",", "").replace("%", "")
+
+
+def _summary_has_numbers_not_in_csv_or_facts(
+    summary: str,
+    csv_text: str,
+    verified_facts: str,
+) -> bool:
+    summary_nums = {_normalize_num_token(n) for n in _extract_numbers(summary)}
+
+    allowed_nums = {
+        _normalize_num_token(n)
+        for n in (_extract_numbers(csv_text) | _extract_numbers(verified_facts))
+    }
+
+    ignore = {"1", "2", "3", "4", "5"}
+    unsupported = summary_nums - allowed_nums - ignore
+
+    return len(unsupported) > 0
+
+def generate_summary_from_csv(csv_text: str, config: dict) -> str:
+    """
+    Generate summary from cleaned CSV.
+
+    Supports:
+        - rule_based
+        - rule_based_facts
+        - qwen_text
+
+    For qwen_text, use safety gates to avoid hallucinations on:
+        - Yes/No categorical tables
+        - non-numeric CSVs
+        - weak extracted tables
+        - unsupported numeric claims
+    """
+    model = config.get("pipeline", {}).get(
+        "summary_model",
+        "rule_based_facts",
+    ).lower()
+
+    if model in {"rule_based", "rule_based_facts"}:
+        return _rule_based_summary_from_csv(csv_text)
+
+    if model in {"qwen_text", "qwen", "qwen2.5"}:
+        verified_facts = _rule_based_summary_from_csv(csv_text)
+
+        if "no clear numeric metric column was detected" in verified_facts.lower():
+            return verified_facts
+        
+        if _csv_has_repeated_constant_count_column(csv_text):
+            return verified_facts
+
+        if _csv_has_mostly_boolean_values(csv_text):
+            return verified_facts
+
+        if _csv_is_too_weak_for_qwen(csv_text):
+            return verified_facts
+
+        qwen_summary = _qwen_summary_from_csv(csv_text, config)
+
+        if _summary_has_unsupported_100_percent(qwen_summary, csv_text):
+            return verified_facts
+
+        if _summary_has_numbers_not_in_csv_or_facts(qwen_summary, csv_text, verified_facts):
+            return verified_facts
+
+        return qwen_summary
+
+    raise ValueError(
+        f"Unknown summary_model: {model}. "
+        "Supported: rule_based, rule_based_facts, qwen_text."
+    )
+
 
 def _is_number(value: str) -> bool:
     """
@@ -781,11 +918,15 @@ def _make_row_label(
 
 def _rule_based_summary_from_csv(csv_text: str) -> str:
     """
-    Generate verified factual chart summary from CSV.
+    Generate a factual chart summary from CSV.
 
-    Used both as:
-        - standalone rule-based summary
-        - verified facts for Qwen summary
+    Improvements:
+        - uses Year/Date as label axis when it is the first column
+        - avoids using Year/Date as metric columns
+        - combines labels for multi-text-column tables
+        - handles up to 3 numeric series
+        - uses trend only for ordered axes
+        - uses spread for categorical axes
     """
     csv_text = (csv_text or "").strip()
 
