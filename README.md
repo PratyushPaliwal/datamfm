@@ -86,4 +86,4 @@ datamfm/
 
 ## Team
 
-Pratyush Paliwal and [teammate name] — submitted for CVPR 2026 DataMFM Challenge.
+Aditi Bhonsle, M.Sc. TU Darmstadt and Pratyush Paliwal, M.Sc. TU Darmstadt — submitted for CVPR 2026 DataMFM Challenge.
